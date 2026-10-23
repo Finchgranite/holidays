@@ -1,0 +1,592 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>Finch's Holidays</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap">
+<style>
+/* Finch's Holiday Booker - one phone-first page. No records live in this file:
+   everything is read from / written to SharePoint after the person signs in. */
+:root{
+  --bg:#e9ecee; --panel:#ffffff; --ink:#1d2428; --muted:#5d6a72; --line:#d3d9dd;
+  --accent:#17616b; --accent-ink:#ffffff; --accent-soft:#dcecee;
+  --fixed:#8a96a0; --fixed-soft:#e6eaed;
+  --pending:#a8680a; --pending-soft:#fbefd9;
+  --cancel:#9b2c2c; --cancel-soft:#f6e3e3;
+  --ok:#2e7d4a; --ok-soft:#e1f1e6;
+  --display:"Barlow Condensed","Arial Narrow",Arial,sans-serif;
+  --body:"Barlow",system-ui,"Segoe UI",Arial,sans-serif;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#14191c; --panel:#1e2529; --ink:#e7ecef; --muted:#9aa7af; --line:#33404a;
+  --accent:#4fb3bf; --accent-ink:#0d1a1c; --accent-soft:#1d3a3e;
+  --fixed:#7d8a94; --fixed-soft:#2a3338;
+  --pending:#e0a748; --pending-soft:#3b2f1a;
+  --cancel:#e07a7a; --cancel-soft:#3d2224;
+  --ok:#6cc58d; --ok-soft:#1d3527; color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.45;padding-bottom:env(safe-area-inset-bottom,0px)}
+.app{max-width:480px;margin:0 auto;min-height:100vh;background:var(--panel);display:flex;flex-direction:column}
+h1,h2,h3{font-family:var(--display);margin:0;text-wrap:balance}
+.bar{background:var(--accent);color:var(--accent-ink);padding:calc(14px + env(safe-area-inset-top,0px)) 16px 12px;display:flex;justify-content:space-between;align-items:center;gap:10px;position:sticky;top:0;z-index:5}
+.bar .t{font-family:var(--display);font-weight:700;font-size:1.35rem}
+.bar .who{font-size:.82rem;text-align:right;opacity:.92}
+.bar button{background:none;border:0;color:inherit;font:inherit;font-family:var(--display);font-size:1.05rem;font-weight:600;padding:4px 0;cursor:pointer}
+.in{padding:14px 16px 28px;display:flex;flex-direction:column;gap:14px;flex:1}
+.demo{background:var(--pending-soft);color:var(--ink);font-size:.82rem;padding:8px 16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.demo select{font:inherit;padding:2px 4px}
+.yr{display:flex;gap:6px}
+.yr button{flex:1;padding:7px 0;border:1px solid var(--line);border-radius:8px;font:inherit;font-weight:600;font-size:.9rem;color:var(--muted);background:var(--panel);cursor:pointer}
+.yr button.on{background:var(--ink);color:var(--panel);border-color:var(--ink)}
+.big{display:flex;align-items:baseline;gap:8px}
+.big .n{font-family:var(--display);font-weight:700;font-size:3.4rem;line-height:1;color:var(--accent);font-variant-numeric:tabular-nums}
+.big .l{font-weight:600}
+.meter{display:flex;height:16px;border-radius:5px;overflow:hidden;border:1px solid var(--line)}
+.meter i{display:block;height:100%}
+.m-fixed{background:var(--fixed)} .m-taken{background:var(--ink)} .m-booked{background:var(--accent)}
+.m-pend{background:repeating-linear-gradient(45deg,var(--pending) 0 4px,var(--pending-soft) 4px 8px)}
+.legend{display:grid;grid-template-columns:1fr auto;gap:3px 10px;font-size:.88rem;font-variant-numeric:tabular-nums}
+.legend span:nth-child(even){text-align:right;font-weight:600}
+.legend .tot{border-top:1px solid var(--line);padding-top:3px}
+.dot{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:6px}
+.btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.btn{font-family:var(--display);font-weight:600;font-size:1.1rem;text-align:center;padding:12px 8px;border-radius:10px;border:1px solid var(--accent);color:var(--accent);background:var(--panel);cursor:pointer;width:100%}
+.btn.p{background:var(--accent);color:var(--accent-ink)}
+.btn.d{border-color:var(--cancel);color:var(--cancel)}
+.btn.dp{background:var(--cancel);border-color:var(--cancel);color:#fff}
+.btn.full{grid-column:1/-1}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn:focus-visible,.yr button:focus-visible,.pk button:focus-visible{outline:3px solid var(--pending);outline-offset:2px}
+.sec{font-family:var(--display);font-weight:600;font-size:.88rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.list{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.row{display:grid;grid-template-columns:66px 1fr auto;gap:8px;align-items:center;padding:9px 10px;border-top:1px solid var(--line);font-size:.92rem}
+.row:first-child{border-top:0}
+.row label{display:contents;cursor:pointer}
+.dt{font-variant-numeric:tabular-nums;font-weight:600;line-height:1.15}
+.dt small{display:block;font-weight:400;color:var(--muted);font-size:.76rem}
+.what small{display:block;color:var(--muted);font-size:.78rem}
+.chip{font-size:.74rem;font-weight:600;padding:2px 8px;border-radius:20px;white-space:nowrap}
+.c-ok{background:var(--ok-soft);color:var(--ok)} .c-pend{background:var(--pending-soft);color:var(--pending)}
+.c-fixed{background:var(--fixed-soft);color:var(--muted)} .c-can{background:var(--cancel-soft);color:var(--cancel)}
+.c-taken{background:var(--fixed-soft);color:var(--ink)}
+.row.cx .what{text-decoration:line-through;color:var(--muted)}
+.empty{padding:12px;color:var(--muted);font-size:.9rem}
+.field{display:flex;flex-direction:column;gap:5px}
+.field>label,.field>.lab{font-weight:600;font-size:.9rem}
+input[type=text],input[type=number],input[type=date],select,textarea{font:inherit;border:1px solid var(--line);border-radius:8px;padding:9px 10px;background:var(--panel);color:var(--ink);width:100%}
+.seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{flex:1;padding:9px 2px;font:inherit;font-size:.88rem;font-weight:600;color:var(--muted);background:var(--panel);border:0;border-left:1px solid var(--line);cursor:pointer}
+.seg button:first-child{border-left:0}
+.seg button.on{background:var(--accent-soft);color:var(--accent)}
+.note{background:var(--accent-soft);border-radius:10px;padding:10px 12px;font-size:.92rem}
+.note.warn{background:var(--pending-soft)}
+.note.bad{background:var(--cancel-soft);color:var(--cancel);font-weight:600}
+.note.good{background:var(--ok-soft)}
+.pk-head{display:flex;justify-content:space-between;align-items:center;font-family:var(--display);font-size:1.2rem;font-weight:600}
+.pk-head button{font-size:1.6rem;color:var(--accent);padding:0 12px;background:none;border:0;cursor:pointer;line-height:1}
+.pk-head button:disabled{opacity:.25}
+.pk{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center;font-variant-numeric:tabular-nums}
+.pk .dn{font-weight:600;font-size:.74rem;color:var(--muted);padding:2px 0}
+.pk button{position:relative;padding:9px 0;border-radius:8px;font:inherit;font-weight:600;border:1px solid transparent;background:var(--panel);color:var(--ink);cursor:pointer}
+.pk button:disabled{cursor:default}
+.pk .we{color:var(--muted);opacity:.45}
+.pk .fx{background:var(--fixed-soft);color:var(--muted);text-decoration:line-through}
+.pk .mine{background:var(--ok-soft);color:var(--ok)}
+.pk .past{color:var(--muted);opacity:.4}
+.pk .sel{background:var(--accent);color:var(--accent-ink)}
+.pk .today{border-color:var(--ink)}
+.pk .oth::after{content:"";position:absolute;left:50%;bottom:3px;width:5px;height:5px;margin-left:-2.5px;border-radius:50%;background:var(--pending)}
+.pk-key{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:.78rem;color:var(--muted)}
+.k{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:4px;vertical-align:-1px}
+.k.sel{background:var(--accent)} .k.fx{background:var(--fixed-soft);border:1px solid var(--line)} .k.mine{background:var(--ok-soft);border:1px solid var(--ok)}
+.k.oth{background:var(--pending);border-radius:50%;width:7px;height:7px}
+.tick{width:22px;height:22px;accent-color:var(--cancel)}
+.center{display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:18px;flex:1;padding:24px 16px}
+.tbl{width:100%;border-collapse:collapse;font-size:.9rem;font-variant-numeric:tabular-nums}
+.tbl th,.tbl td{padding:7px 6px;border-top:1px solid var(--line);text-align:left}
+.tbl th{font-size:.76rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;border-top:0}
+.tbl td.n,.tbl th.n{text-align:right}
+.tbl input{padding:5px 6px;width:4.2em;text-align:right}
+.scroll{overflow-x:auto}
+.inline{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.inline>*{flex:1;min-width:0}
+.small{font-size:.82rem;color:var(--muted)}
+.link{background:none;border:0;color:var(--accent);font:inherit;font-weight:600;cursor:pointer;padding:0;text-decoration:underline}
+.err{white-space:pre-wrap;font-size:.8rem}
+@media (prefers-reduced-motion: no-preference){.btn{transition:opacity .15s}}
+</style>
+</head>
+<body>
+<div class="app" id="app"><div class="center"><p>Loading...</p></div></div>
+
+<script src="msal-browser.min.js"></script>
+<script>
+"use strict";
+// ---------------------------------------------------------------------------
+// Settings. CLIENT_ID is filled in once Graham has registered the sign-in app.
+// While it says PENDING (or the link has #demo) the page runs on example data.
+// ---------------------------------------------------------------------------
+const CFG = {
+  clientId: "46bd0fc2-ca58-4622-88d0-5eb129458066",   // Entra app "Finch Holiday Booker", registered 23 Oct 2026
+  tenant: "finchgranite.onmicrosoft.com",
+  site: "finchgranite.sharepoint.com:/sites/staff-holidays",
+  scopes: ["User.Read", "Sites.ReadWrite.All"],
+  firstYear: 2027,                       // the booker starts with the 2027 holiday year
+  lists: { staff: "Staff", company: "Company Days", days: "Holiday Days",
+           requests: "Requests", extra: "Extra Days" }
+};
+const DEMO = CFG.clientId === "PENDING" || location.hash === "#demo";
+
+// ---------------------------------------------------------------- date helpers
+const pad = n => String(n).padStart(2, "0");
+const iso = d => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+const parse = s => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
+const TODAY = iso(new Date());
+const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const MONTH = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const dayName = s => DOW[parse(s).getDay()];
+const nice = s => { const d = parse(s); return DOW[d.getDay()] + " " + d.getDate() + " " + MON[d.getMonth()]; };
+const yearOf = s => Number(s.slice(0, 4));
+const half = n => { const s = n < 0 ? "-" : "", a = Math.abs(n), w = Math.floor(a + 1e-9), h = a - w > 0.001;
+  return s + (w || !h ? String(w) : "") + (h ? "½" : ""); };
+const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const lc = s => String(s || "").toLowerCase();
+const ACTIVE = new Set(["Pending", "Booked"]);
+
+// ------------------------------------------------------------- state
+const S = {
+  me: null,          // staff row of the signed-in person
+  staff: [], company: [], days: [], requests: [], extra: [],
+  year: null, view: "home",
+  pick: { month: null, sel: new Set(), part: "Full", kind: "Holiday", note: "" },
+  cancelSel: new Set(), cancelReason: "", msg: null, busy: false
+};
+
+// ======================================================================
+// Data: two back ends with the same shape. DEMO keeps everything in memory.
+// ======================================================================
+const Demo = {
+  async load() {
+    const seed = await (await fetch("seed.json", { cache: "no-store" })).json();
+    S.staff = seed.staff.map(p => ({ ...p, email: lc(p.email) }));
+    S.company = seed.companyDays.map((c, i) => ({ id: "c" + i, ...c }));
+    S.days = seed.days.map((d, i) => ({ id: "d" + i, ...d, email: lc(d.email) }));
+    // the public page carries no names or dates: demo mode needs a local seed.json beside it
+    S.requests = []; S.extra = [];
+    const who = new URLSearchParams(location.search).get("as");
+    S.me = S.staff.find(p => p.name.toLowerCase() === lc(who)) || S.staff.find(p => p.name === "Joe");
+  },
+  async book(dates, part, kind, note) {
+    const auto = !S.me.needsApproval;
+    dates.forEach(dt => S.days.push({ id: "n" + Math.random().toString(36).slice(2), name: S.me.name, email: S.me.email,
+      date: dt, part, amount: kind === "Holiday" ? (part === "Full" ? 1 : 0.5) : 0, kind,
+      status: auto ? "Booked" : "Pending", note, source: "app" }));
+    return auto ? "Booked. It's in the diary." : "Sent to Graham. You'll get an email when he answers.";
+  },
+  async cancel(ids, reason) {
+    S.days.forEach(d => { if (ids.includes(d.id)) { d.status = "Cancelled"; d.cancelReason = reason; d.cancelledBy = S.me.name; d.cancelledAt = TODAY; } });
+    return "Cancelled. The diary now shows them as CANCELLED.";
+  },
+  async addCompany(date, kind, name) { S.company.push({ id: "c" + Math.random(), date, kind, name }); },
+  async removeCompany(id) { S.company = S.company.filter(c => c.id !== id); },
+  async setAllowance(email, n) { S.staff.find(p => p.email === email).allowance = n; },
+  async addExtra(email, year, n, reason) { S.extra.push({ id: "e" + Math.random(), email, year, days: n, reason, name: S.staff.find(p => p.email === email).name }); }
+};
+
+const Live = {
+  msal: null, account: null, siteId: null, listIds: {},
+  async init() {
+    this.msal = new msal.PublicClientApplication({
+      auth: { clientId: CFG.clientId, authority: "https://login.microsoftonline.com/" + CFG.tenant,
+              redirectUri: location.origin + location.pathname },
+      cache: { cacheLocation: "localStorage" } });
+    const r = await this.msal.handleRedirectPromise();
+    this.account = (r && r.account) || this.msal.getAllAccounts()[0] || null;
+    return !!this.account;
+  },
+  signIn() { this.msal.loginRedirect({ scopes: CFG.scopes, prompt: "select_account" }); },
+  signOut() { this.msal.logoutRedirect({ account: this.account }); },
+  async token() {
+    try { return (await this.msal.acquireTokenSilent({ scopes: CFG.scopes, account: this.account })).accessToken; }
+    catch (e) { await this.msal.acquireTokenRedirect({ scopes: CFG.scopes, account: this.account }); throw e; }
+  },
+  async g(method, path, body) {
+    const r = await fetch("https://graph.microsoft.com/v1.0" + path, { method,
+      headers: { Authorization: "Bearer " + await this.token(), "Content-Type": "application/json",
+                 Prefer: "HonorNonIndexedQueriesWarningMayFailRandomly" },
+      body: body ? JSON.stringify(body) : undefined });
+    if (!r.ok) throw new Error(method + " " + path.split("?")[0] + " -> " + r.status + "\n" + (await r.text()).slice(0, 400));
+    return r.status === 204 ? null : r.json();
+  },
+  async items(key) {
+    let url = "/sites/" + this.siteId + "/lists/" + this.listIds[key] + "/items?$expand=fields&$top=999", out = [];
+    while (url) { const j = await this.g("GET", url); out = out.concat(j.value);
+      url = j["@odata.nextLink"] ? j["@odata.nextLink"].replace("https://graph.microsoft.com/v1.0", "") : null; }
+    return out.map(i => ({ id: i.id, ...i.fields }));
+  },
+  async load() {
+    if (!this.siteId) {
+      this.siteId = (await this.g("GET", "/sites/" + CFG.site + "?$select=id")).id;
+      const ls = await this.g("GET", "/sites/" + this.siteId + "/lists?$select=id,displayName&$top=100");
+      for (const [k, name] of Object.entries(CFG.lists)) {
+        const l = ls.value.find(x => x.displayName === name);
+        if (!l) throw new Error("The SharePoint list '" + name + "' is missing.");
+        this.listIds[k] = l.id; }
+    }
+    const [st, co, da, rq, ex] = await Promise.all(["staff", "company", "days", "requests", "extra"].map(k => this.items(k)));
+    S.staff = st.filter(p => p.Active !== false).map(p => ({ id: p.id, name: p.Title, email: lc(p.Email), allowance: Number(p.Allowance) || 0,
+      offDays: p.OffDays || "", admin: !!p.IsAdmin, needsApproval: p.NeedsApproval !== false }));
+    S.company = co.map(c => ({ id: c.id, date: c.DayDate, kind: c.Kind, name: c.Title }));
+    S.days = da.map(d => ({ id: d.id, name: d.Title, email: lc(d.Email), date: d.DayDate, part: d.Part || "Full",
+      amount: Number(d.Amount) || 0, kind: d.Kind, status: d.Status, note: d.Note, cancelReason: d.CancelReason,
+      cancelledBy: d.CancelledBy, cancelledAt: (d.CancelledAt || "").slice(0, 10), source: d.Source }));
+    S.requests = rq.map(q => ({ id: q.id, email: lc(q.Email), action: q.Action, dates: (q.DayDates || "").split(",").filter(Boolean),
+      ids: (q.DayIds || "").split(",").filter(Boolean), part: q.Part, kind: q.Kind, status: q.Status, outcome: q.Outcome }));
+    S.extra = ex.map(e => ({ id: e.id, name: e.Title, email: lc(e.Email), year: Number(e.Yr), days: Number(e.Days) || 0, reason: e.Reason }));
+    S.me = S.staff.find(p => p.email === lc(this.account.username)) || null;
+  },
+  add(key, fields) { return this.g("POST", "/sites/" + this.siteId + "/lists/" + this.listIds[key] + "/items", { fields }); },
+  async book(dates, part, kind, note) {
+    await this.add("requests", { Title: S.me.name, Email: S.me.email, Action: "Book", DayDates: dates.join(","),
+      Part: part, Kind: kind, Amount: kind === "Holiday" ? dates.length * (part === "Full" ? 1 : 0.5) : 0, Note: note, Status: "New" });
+    return S.me.needsApproval ? "Sent to Graham. You'll get an email when he answers." : "Booked. It will be in the diary in a minute or two.";
+  },
+  async cancel(ids, reason) {
+    await this.add("requests", { Title: S.me.name, Email: S.me.email, Action: "Cancel", DayIds: ids.join(","),
+      DayDates: ids.map(i => (S.days.find(d => d.id === i) || {}).date).join(","), Note: reason, Status: "New" });
+    return "Cancelled. The diary will show them as CANCELLED in a minute or two.";
+  },
+  addCompany(date, kind, name) { return this.add("company", { Title: name, DayDate: date, Kind: kind }); },
+  removeCompany(id) { return this.g("DELETE", "/sites/" + this.siteId + "/lists/" + this.listIds.company + "/items/" + id); },
+  setAllowance(email, n) { const p = S.staff.find(x => x.email === email);
+    return this.g("PATCH", "/sites/" + this.siteId + "/lists/" + this.listIds.staff + "/items/" + p.id + "/fields", { Allowance: n }); },
+  addExtra(email, year, n, reason) { const p = S.staff.find(x => x.email === email);
+    return this.add("extra", { Title: p.name, Email: email, Yr: year, Days: n, Reason: reason }); }
+};
+const DB = DEMO ? Demo : Live;
+
+// ======================================================================
+// Rules
+// ======================================================================
+const companyOn = date => S.company.find(c => c.date === date);
+const offWeekdays = p => (p.offDays || "").split(/[ ,]+/).filter(Boolean).map(x => DOW.indexOf(x.slice(0, 3)));
+function workday(p, date) {
+  const w = parse(date).getDay();
+  return w >= 1 && w <= 5 && !companyOn(date) && !offWeekdays(p).includes(w);
+}
+// days asked for but not yet turned into day rows by the flow (live only)
+function queued(email, year) {
+  return S.requests.filter(q => q.status === "New" && q.action === "Book" && q.email === email)
+    .flatMap(q => q.dates.filter(d => yearOf(d) === year).map(d => ({ date: d, part: q.part, kind: q.kind,
+      amount: q.kind === "Holiday" ? (q.part === "Full" ? 1 : 0.5) : 0, status: "Pending", queued: true })));
+}
+function cancelling(id) { return S.requests.some(q => q.status === "New" && q.action === "Cancel" && q.ids.includes(id)); }
+function balance(p, year) {
+  const extra = S.extra.filter(e => e.email === p.email && e.year === year).reduce((a, e) => a + e.days, 0);
+  const allowance = p.allowance + extra;
+  const company = S.company.filter(c => yearOf(c.date) === year && [1,2,3,4,5].includes(parse(c.date).getDay())).length;
+  const mine = S.days.filter(d => d.email === p.email && yearOf(d.date) === year && d.kind === "Holiday" && ACTIVE.has(d.status) && !cancelling(d.id))
+    .concat(queued(p.email, year).filter(d => d.kind === "Holiday"));
+  const taken = mine.filter(d => d.status === "Booked" && d.date < TODAY).reduce((a, d) => a + d.amount, 0);
+  const booked = mine.filter(d => d.status === "Booked" && d.date >= TODAY).reduce((a, d) => a + d.amount, 0);
+  const pending = mine.filter(d => d.status === "Pending").reduce((a, d) => a + d.amount, 0);
+  return { allowance, extra, company, taken, booked, pending, left: allowance - company - taken - booked - pending };
+}
+function myActiveOn(date) {
+  return S.days.some(d => d.email === S.me.email && d.date === date && ACTIVE.has(d.status) && !cancelling(d.id))
+      || queued(S.me.email, yearOf(date)).some(d => d.date === date);
+}
+function othersOn(date) {
+  return S.days.filter(d => d.email !== S.me.email && d.date === date && ACTIVE.has(d.status) && !cancelling(d.id))
+    .map(d => d.name + (d.part !== "Full" ? " (" + d.part + ")" : ""));
+}
+function years() {
+  const ys = new Set([CFG.firstYear, Math.max(CFG.firstYear, new Date().getFullYear())]);
+  S.company.forEach(c => { const y = yearOf(c.date); if (y >= CFG.firstYear) ys.add(y); });
+  return [...ys].sort();
+}
+
+// ======================================================================
+// Views
+// ======================================================================
+const $app = document.getElementById("app");
+function shell(title, body, back) {
+  const who = S.me ? esc(S.me.name) + (DEMO ? "<br>example data" : "") : "";
+  const demo = DEMO ? `<div class="demo">Demo with example data. Nothing is saved or sent.
+      <label>View as <select id="as">${S.staff.map(p => `<option ${p === S.me ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select></label></div>` : "";
+  $app.innerHTML = `<div class="bar">${back ? `<button data-go="home" aria-label="Back">‹ Back</button>` : `<span class="t">${esc(title)}</span>`}
+      <span class="who">${who}</span></div>${demo}<div class="in">${body}</div>`;
+  const as = document.getElementById("as");
+  if (as) as.onchange = () => { S.me = S.staff.find(p => p.name === as.value); S.pick.sel.clear(); S.cancelSel.clear(); render(); };
+}
+function yearTabs() {
+  return `<div class="yr">${years().map(y => `<button data-year="${y}" class="${y === S.year ? "on" : ""}">${y}</button>`).join("")}</div>`;
+}
+function msg() {
+  if (!S.msg) return "";
+  const m = S.msg; S.msg = null;
+  return `<div class="note ${m.kind || "good"}" role="status">${esc(m.text)}</div>`;
+}
+function dayRow(d, opts) {
+  const can = d.status === "Cancelled", cx = cancelling(d.id);
+  const chip = can ? `<span class="chip c-can">Cancelled</span>`
+    : cx ? `<span class="chip c-can">Cancelling</span>`
+    : d.status === "Pending" ? `<span class="chip c-pend">Waiting</span>`
+    : d.status === "Rejected" ? `<span class="chip c-can">Not approved</span>`
+    : d.date < TODAY ? `<span class="chip c-taken">Taken</span>` : `<span class="chip c-ok">Booked</span>`;
+  const kind = d.kind === "Holiday" ? "Holiday" : d.kind === "Lieu" ? "Lieu day" : d.kind === "Swap" ? "Swap day" : esc(d.kind);
+  const part = d.part && d.part !== "Full" ? " · half day (" + d.part + ")" : "";
+  const sub = can ? "Cancelled" + (d.cancelledAt ? " " + nice(d.cancelledAt) : "") + (d.cancelReason ? ": " + esc(d.cancelReason) : "")
+            : (d.note ? esc(d.note) : "");
+  return `<div class="row ${can ? "cx" : ""}"><span class="dt">${dayName(d.date)} ${parse(d.date).getDate()}<small>${MON[parse(d.date).getMonth()]}</small></span>
+    <span class="what">${kind}${part}${sub ? `<small>${sub}</small>` : ""}</span>${chip}</div>`;
+}
+function companyRow(c) {
+  return `<div class="row"><span class="dt">${dayName(c.date)} ${parse(c.date).getDate()}<small>${MON[parse(c.date).getMonth()]}</small></span>
+    <span class="what">${esc(c.name)}</span><span class="chip c-fixed">Everyone</span></div>`;
+}
+
+function viewHome() {
+  const b = balance(S.me, S.year), y = S.year;
+  const all = b.allowance || 1, pct = n => Math.max(0, n / all * 100).toFixed(2) + "%";
+  const mine = S.days.filter(d => d.email === S.me.email && yearOf(d.date) === y)
+    .concat(queued(S.me.email, y).map(d => ({ ...d, id: "q" + d.date, name: S.me.name, note: "Just sent" })));
+  const comp = S.company.filter(c => yearOf(c.date) === y);
+  const items = mine.map(d => ({ date: d.date, html: dayRow(d) })).concat(comp.map(c => ({ date: c.date, html: companyRow(c) })))
+    .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
+  const up = items.filter(i => i.date >= TODAY), past = items.filter(i => i.date < TODAY).reverse();
+  const admin = S.me.admin ? `<button class="btn full" data-go="admin">Year set-up and allowances</button>` : "";
+  const leftTxt = b.left < 0 ? "days over" : "days left to book";
+  shell("My holidays", `${msg()}${yearTabs()}
+    <div class="big"><span class="n">${half(Math.abs(b.left))}</span><span class="l">${leftTxt} in ${y}</span></div>
+    <div class="meter" role="img" aria-label="${b.allowance} day allowance">
+      <i class="m-fixed" style="width:${pct(b.company)}"></i><i class="m-taken" style="width:${pct(b.taken)}"></i>
+      <i class="m-booked" style="width:${pct(b.booked)}"></i><i class="m-pend" style="width:${pct(b.pending)}"></i></div>
+    <div class="legend">
+      <span><i class="dot" style="background:var(--fixed)"></i>Bank holidays + Christmas shutdown</span><span>${half(b.company)}</span>
+      <span><i class="dot" style="background:var(--ink)"></i>Already taken</span><span>${half(b.taken)}</span>
+      <span><i class="dot" style="background:var(--accent)"></i>Booked, still to come</span><span>${half(b.booked)}</span>
+      <span><i class="dot" style="background:var(--pending)"></i>Waiting for Graham</span><span>${half(b.pending)}</span>
+      <span><i class="dot" style="border:1px solid var(--line)"></i>Left to book</span><span>${half(b.left)}</span>
+      <span class="tot">Allowance${b.extra ? " (incl. " + half(b.extra) + " extra)" : ""}</span><span class="tot">${half(b.allowance)}</span></div>
+    <div class="btns"><button class="btn p" data-go="book">Book days off</button><button class="btn d" data-go="cancel">Cancel days</button>${admin}</div>
+    <div class="sec">Coming up</div>
+    <div class="list">${up.length ? up.map(i => i.html).join("") : `<div class="empty">Nothing booked yet for ${y}.</div>`}</div>
+    ${past.length ? `<div class="sec">Earlier in ${y}</div><div class="list">${past.map(i => i.html).join("")}</div>` : ""}
+    ${DEMO ? "" : `<button class="link small" data-act="signout" style="align-self:center">Sign out</button>`}`);
+}
+
+function viewBook() {
+  const P = S.pick, y = S.year;
+  if (!P.month || yearOf(P.month) !== y) {
+    const start = TODAY > y + "-01-01" && yearOf(TODAY) === y ? TODAY : y + "-01-01";
+    P.month = start.slice(0, 7) + "-01";
+  }
+  const m0 = parse(P.month), first = new Date(m0), lastDay = new Date(m0.getFullYear(), m0.getMonth() + 1, 0).getDate();
+  let cells = ["M","T","W","T","F","S","S"].map(x => `<span class="dn">${x}</span>`).join("");
+  const lead = (first.getDay() + 6) % 7;
+  for (let i = 0; i < lead; i++) cells += "<span></span>";
+  for (let d = 1; d <= lastDay; d++) {
+    const ds = iso(new Date(m0.getFullYear(), m0.getMonth(), d)), w = parse(ds).getDay(), c = companyOn(ds);
+    let cls = [], dis = false, title = "";
+    if (w === 0 || w === 6) { cls.push("we"); dis = true; }
+    else if (c) { cls.push("fx"); dis = true; title = c.name; }
+    else if (!workday(S.me, ds)) { cls.push("we"); dis = true; title = "Your normal day off"; }
+    else if (myActiveOn(ds)) { cls.push("mine"); dis = true; title = "Already booked"; }
+    else if (ds <= TODAY) { cls.push("past"); dis = true; }
+    if (P.sel.has(ds)) cls.push("sel");
+    if (ds === TODAY) cls.push("today");
+    const o = othersOn(ds); if (o.length && !dis) { cls.push("oth"); title = o.join(", ") + " off"; }
+    cells += `<button data-day="${ds}" class="${cls.join(" ")}" ${dis ? "disabled" : ""} ${title ? `title="${esc(title)}"` : ""} aria-pressed="${P.sel.has(ds)}">${d}</button>`;
+  }
+  const sel = [...P.sel].filter(d => yearOf(d) === y).sort();
+  const per = P.part === "Full" ? 1 : 0.5;
+  const cost = P.kind === "Holiday" ? sel.length * per : 0;
+  const b = balance(S.me, y);
+  const over = P.kind === "Holiday" && cost > b.left + 1e-9;
+  const clashes = sel.map(d => ({ d, o: othersOn(d) })).filter(x => x.o.length);
+  const kinds = S.me.admin ? ["Holiday", "Lieu", "Swap"] : ["Holiday", "Lieu"];
+  const kindLbl = { Holiday: "Holiday", Lieu: "Lieu day", Swap: "Swap day" };
+  const prevOk = m0.getMonth() > 0, nextOk = m0.getMonth() < 11;
+  let summary = "";
+  if (sel.length) {
+    const list = sel.map(nice).join(", ");
+    summary = P.kind === "Holiday"
+      ? `<div class="note">This is <b>${half(cost)} day${cost === 1 ? "" : "s"}</b> (${esc(list)}).${over ? "" : ` Afterwards you'll have <b>${half(b.left - cost)}</b> left for ${y}.`}</div>`
+      : `<div class="note">${sel.length} ${kindLbl[P.kind].toLowerCase()}${sel.length > 1 ? "s" : ""} (${esc(list)}). These don't come off your holiday allowance.</div>`;
+  }
+  const overNote = over ? `<div class="note bad">You only have ${half(b.left)} day${b.left === 1 ? "" : "s"} left for ${y}. Take some days off the calendar, or ask Graham to add extra days.</div>` : "";
+  const clashNote = clashes.length ? `<div class="note warn"><b>Heads up:</b> ${clashes.map(x => esc(x.o.join(" and ")) + " " + (x.o.length > 1 ? "are" : "is") + " already off on <b>" + nice(x.d) + "</b>").join("; ")}. You can still ask${S.me.needsApproval ? ". Graham will see it too" : ""}.</div>` : "";
+  const sendLbl = S.me.needsApproval ? "Send to Graham" : "Book it";
+  shell("Book days off", `${yearTabs()}
+    <div class="pk-head"><button data-month="-1" ${prevOk ? "" : "disabled"} aria-label="Previous month">‹</button><span>${MONTH[m0.getMonth()]} ${y}</span><button data-month="1" ${nextOk ? "" : "disabled"} aria-label="Next month">›</button></div>
+    <div class="pk">${cells}</div>
+    <div class="pk-key"><span><i class="k sel"></i>Your pick</span><span><i class="k mine"></i>Already yours</span><span><i class="k fx"></i>Everyone off</span><span><i class="k oth"></i>Someone else off</span></div>
+    ${clashNote}
+    <div class="field"><span class="lab">Whole or half day</span><div class="seg">${["Full","AM","PM"].map(x => `<button data-part="${x}" class="${P.part === x ? "on" : ""}">${x === "Full" ? "Whole days" : "Half · " + x}</button>`).join("")}</div></div>
+    <div class="field"><span class="lab">Type of day off</span><div class="seg">${kinds.map(x => `<button data-kind="${x}" class="${P.kind === x ? "on" : ""}">${kindLbl[x]}</button>`).join("")}</div></div>
+    <div class="field"><label for="note">Note for Graham (optional)</label><input type="text" id="note" maxlength="200" value="${esc(P.note)}" placeholder="e.g. family wedding"></div>
+    ${summary}${overNote}
+    <button class="btn p full" data-act="send" ${!sel.length || over || S.busy ? "disabled" : ""}>${S.busy ? "Sending..." : sendLbl}</button>`, true);
+  const n = document.getElementById("note"); if (n) n.oninput = () => { P.note = n.value; };
+}
+
+function viewCancel() {
+  const y = S.year;
+  const mine = S.days.filter(d => d.email === S.me.email && yearOf(d.date) === y && ACTIVE.has(d.status)).sort((a, b) => a.date < b.date ? -1 : 1);
+  const rows = mine.map(d => {
+    const future = d.date > TODAY, busy = cancelling(d.id);
+    const ok = future && !busy;
+    const lbl = (d.kind === "Holiday" ? "Holiday" : d.kind === "Lieu" ? "Lieu day" : "Swap day") + (d.part !== "Full" ? " · ½ " + d.part : "");
+    const chip = busy ? `<span class="chip c-can">Cancelling</span>` : !future ? `<span class="chip c-taken">Taken</span>`
+      : d.status === "Pending" ? `<span class="chip c-pend">Waiting</span>` : `<span class="chip c-ok">Booked</span>`;
+    return `<div class="row" ${ok ? "" : `style="color:var(--muted)"`}><label for="cx${d.id}"><span class="dt"><input type="checkbox" class="tick" id="cx${d.id}" data-cx="${d.id}" ${S.cancelSel.has(d.id) ? "checked" : ""} ${ok ? "" : "disabled"}></span>
+      <span class="what">${nice(d.date)}<small>${lbl}</small></span>${chip}</label></div>`;
+  }).join("");
+  const sel = [...S.cancelSel], back = mine.filter(d => sel.includes(d.id) && d.kind === "Holiday").reduce((a, d) => a + d.amount, 0);
+  const b = balance(S.me, y);
+  shell("Cancel days", `${yearTabs()}
+    <p style="margin:0">Tick the days you no longer want off. Days that have already happened can't be cancelled.</p>
+    <div class="list">${rows || `<div class="empty">You have nothing booked in ${y}.</div>`}</div>
+    <div class="field"><label for="why">Why? (optional)</label><input type="text" id="why" maxlength="200" value="${esc(S.cancelReason)}" placeholder="e.g. trip moved"></div>
+    ${sel.length ? `<div class="note">Cancelling <b>${sel.length} day${sel.length > 1 ? "s" : ""}</b>. You'll have <b>${half(b.left + back)}</b> left to book in ${y}.</div>` : ""}
+    <button class="btn dp full" data-act="docancel" ${!sel.length || S.busy ? "disabled" : ""}>${S.busy ? "Cancelling..." : "Cancel " + (sel.length || "") + " day" + (sel.length === 1 ? "" : "s")}</button>
+    <p class="small" style="margin:0;text-align:center">This happens straight away. The diary keeps the entry but marks it CANCELLED, and Graham gets an email.</p>`, true);
+  const w = document.getElementById("why"); if (w) w.oninput = () => { S.cancelReason = w.value; };
+}
+
+function viewAdmin() {
+  const y = S.year;
+  const comp = S.company.filter(c => yearOf(c.date) === y).sort((a, b) => a.date < b.date ? -1 : 1);
+  const wk = comp.filter(c => [1,2,3,4,5].includes(parse(c.date).getDay()));
+  const bank = wk.filter(c => c.kind === "Bank holiday").length, shut = wk.length - bank;
+  const rows = comp.map(c => `<div class="row"><span class="dt">${dayName(c.date)} ${parse(c.date).getDate()}<small>${MON[parse(c.date).getMonth()]}</small></span>
+      <span class="what">${esc(c.name)}<small>${esc(c.kind)}</small></span><button class="link small" data-rmco="${c.id}">Remove</button></div>`).join("");
+  const staffRows = S.staff.map(p => { const b = balance(p, y);
+    return `<tr><td>${esc(p.name)}</td><td class="n"><input type="number" step="0.5" min="0" value="${p.allowance}" data-allow="${esc(p.email)}" aria-label="${esc(p.name)} allowance"></td>
+      <td class="n">${b.extra ? "+" + half(b.extra) : ""}</td><td class="n">${half(b.taken + b.booked)}</td><td class="n">${half(b.pending)}</td><td class="n"><b>${half(b.left)}</b></td></tr>`; }).join("");
+  shell("Year set-up", `${msg()}${yearTabs()}
+    <div class="note"><b>${bank}</b> bank holidays + <b>${shut}</b> shutdown days in ${y} on weekdays. The lads have <b>${28 - wk.length}</b> of 28 to book themselves, and 35-day staff have <b>${35 - wk.length}</b>.</div>
+    <div class="sec">Days everyone is off in ${y}</div>
+    <div class="list">${rows || `<div class="empty">None yet.</div>`}</div>
+    <button class="btn" data-act="govuk">Fill in ${y} bank holidays from GOV.UK</button>
+    <div class="field"><span class="lab">Add a day everyone is off</span>
+      <div class="inline"><input type="date" id="codate" min="${y}-01-01" max="${y}-12-31" aria-label="Date">
+        <select id="cokind" aria-label="Type"><option>Christmas shutdown</option><option>Bank holiday</option></select></div>
+      <button class="btn p" data-act="addco">Add day</button>
+      <span class="small">December shutdown days count in that year. Days after 1 January count in the next year, so add them under that year.</span></div>
+    <div class="sec">Allowances for ${y}</div>
+    <div class="scroll"><table class="tbl"><thead><tr><th>Name</th><th class="n">Yearly</th><th class="n">Extra</th><th class="n">Used</th><th class="n">Waiting</th><th class="n">Left</th></tr></thead><tbody>${staffRows}</tbody></table></div>
+    <span class="small">Change a yearly figure and it saves when you leave the box. It applies to every year.</span>
+    <div class="field"><span class="lab">Give someone extra days in ${y} only</span>
+      <div class="inline"><select id="exwho" aria-label="Person">${S.staff.map(p => `<option value="${esc(p.email)}">${esc(p.name)}</option>`).join("")}</select>
+        <input type="number" id="exdays" step="0.5" value="1" aria-label="Days"></div>
+      <input type="text" id="exwhy" placeholder="Reason (kept on record)" maxlength="200">
+      <button class="btn" data-act="addex">Add extra days</button></div>`, true);
+}
+
+function viewSignIn() {
+  $app.innerHTML = `<div class="bar"><span class="t">Finch's Holidays</span></div>
+    <div class="center"><h1 style="font-size:2.1rem">Book or cancel<br>your holidays</h1>
+    <p style="color:var(--muted);margin:0;max-width:26ch">Sign in with your Finch's work account, the one you use for the H&amp;S checks.</p>
+    <button class="btn p" style="max-width:300px" data-act="signin">Sign in with Microsoft</button></div>`;
+}
+function viewError(e) {
+  $app.innerHTML = `<div class="bar"><span class="t">Finch's Holidays</span></div><div class="in">
+    <div class="note bad">Something went wrong loading your holidays. Try again in a minute. If it keeps happening, tell Graham.</div>
+    <button class="btn p" data-act="reload">Try again</button><pre class="err small">${esc(e && e.message || e)}</pre></div>`;
+}
+
+function render() {
+  if (!S.me) return;
+  if (!years().includes(S.year)) S.year = years()[0];
+  ({ home: viewHome, book: viewBook, cancel: viewCancel, admin: S.me.admin ? viewAdmin : viewHome })[S.view]();
+}
+
+// ======================================================================
+// Events
+// ======================================================================
+async function act(fn, okText) {
+  S.busy = true; render();
+  try { const t = await fn(); if (!DEMO) await DB.load(); S.msg = { text: t || okText, kind: "good" }; return true; }
+  catch (e) { S.msg = { text: "That didn't save: " + e.message, kind: "bad" }; return false; }
+  finally { S.busy = false; render(); }
+}
+$app.addEventListener("click", async ev => {
+  const t = ev.target.closest("button,[data-cx]"); if (!t) return;
+  const ds = t.dataset;
+  if (ds.go) { S.view = ds.go; window.scrollTo(0, 0); render(); return; }
+  if (ds.year) { S.year = Number(ds.year); S.pick.sel.clear(); S.pick.month = null; S.cancelSel.clear(); render(); return; }
+  if (ds.month) { const m = parse(S.pick.month); m.setMonth(m.getMonth() + Number(ds.month)); S.pick.month = iso(m); render(); return; }
+  if (ds.day) { S.pick.sel.has(ds.day) ? S.pick.sel.delete(ds.day) : S.pick.sel.add(ds.day); render(); return; }
+  if (ds.part) { S.pick.part = ds.part; render(); return; }
+  if (ds.kind) { S.pick.kind = ds.kind; render(); return; }
+  if (ds.cx) { S.cancelSel.has(ds.cx) ? S.cancelSel.delete(ds.cx) : S.cancelSel.add(ds.cx); render(); return; }
+  if (ds.rmco) { const c = S.company.find(x => x.id === ds.rmco);
+    if (t.dataset.sure !== "1") { t.dataset.sure = "1"; t.textContent = "Tap again to remove"; return; }
+    await act(() => DB.removeCompany(ds.rmco), "Removed " + nice(c.date) + "."); return; }
+  switch (ds.act) {
+    case "signin": Live.signIn(); break;
+    case "signout": Live.signOut(); break;
+    case "reload": location.reload(); break;
+    case "send": {
+      const P = S.pick, sel = [...P.sel].filter(d => yearOf(d) === S.year).sort();
+      const b = balance(S.me, S.year), cost = P.kind === "Holiday" ? sel.length * (P.part === "Full" ? 1 : 0.5) : 0;
+      if (!sel.length || cost > b.left + 1e-9) return;           // the hard limit, checked again here
+      if (await act(() => DB.book(sel, P.part, P.kind, P.note.trim()))) { P.sel.clear(); P.note = ""; S.view = "home"; render(); }
+      break; }
+    case "docancel": {
+      const ids = [...S.cancelSel];
+      if (await act(() => DB.cancel(ids, S.cancelReason.trim()))) { S.cancelSel.clear(); S.cancelReason = ""; S.view = "home"; render(); }
+      break; }
+    case "addco": {
+      const d = document.getElementById("codate").value, k = document.getElementById("cokind").value;
+      if (!d) return;
+      if (companyOn(d)) { S.msg = { text: nice(d) + " is already on the list.", kind: "warn" }; render(); return; }
+      await act(() => DB.addCompany(d, k, k === "Bank holiday" ? "Bank holiday" : "Christmas shutdown"), "Added " + nice(d) + ".");
+      break; }
+    case "govuk": {
+      try {
+        const j = await (await fetch("https://www.gov.uk/bank-holidays.json")).json();
+        const ev2 = j["england-and-wales"].events.filter(e => yearOf(e.date) === S.year && !companyOn(e.date));
+        if (!j["england-and-wales"].events.some(e => yearOf(e.date) === S.year)) { S.msg = { text: "GOV.UK hasn't published " + S.year + " yet. Try again later in the year.", kind: "warn" }; render(); return; }
+        await act(async () => { for (const e of ev2) await DB.addCompany(e.date, "Bank holiday", e.title.replace("’", "'")); },
+          ev2.length ? "Added " + ev2.length + " bank holiday" + (ev2.length > 1 ? "s" : "") + " from GOV.UK." : "All " + S.year + " bank holidays were already in.");
+      } catch (e) { S.msg = { text: "Couldn't reach GOV.UK: " + e.message, kind: "bad" }; render(); }
+      break; }
+    case "addex": {
+      const who = document.getElementById("exwho").value, n = Number(document.getElementById("exdays").value), why = document.getElementById("exwhy").value.trim();
+      if (!n || !why) { S.msg = { text: "Give a number of days and a reason.", kind: "warn" }; render(); return; }
+      await act(() => DB.addExtra(who, S.year, n, why), "Added " + half(n) + " extra for " + S.staff.find(p => p.email === who).name + " in " + S.year + ".");
+      break; }
+  }
+});
+$app.addEventListener("change", async ev => {
+  const t = ev.target;
+  if (t.dataset && t.dataset.allow) { const n = Number(t.value); if (isNaN(n) || n < 0) return;
+    await act(() => DB.setAllowance(t.dataset.allow, n), "Allowance saved."); }
+});
+
+// ======================================================================
+// Start
+// ======================================================================
+(async function start() {
+  try {
+    if (!DEMO) { if (!(await Live.init())) { viewSignIn(); return; } }
+    await DB.load();
+    if (!S.me) { $app.innerHTML = `<div class="bar"><span class="t">Finch's Holidays</span></div><div class="center">
+      <p>You're signed in as <b>${esc(Live.account.username)}</b>, but that account isn't on the holiday list. Ask Graham to add you.</p>
+      <button class="btn" data-act="signout" style="max-width:260px">Sign in as someone else</button></div>`; return; }
+    S.year = years().includes(yearOf(TODAY)) ? yearOf(TODAY) : years()[0];
+    render();
+  } catch (e) { console.error(e); viewError(e); }
+})();
+</script>
+</body>
+</html>
