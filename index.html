@@ -165,7 +165,7 @@ const S = {
   staff: [], company: [], days: [], requests: [], extra: [],
   year: null, view: "home",
   pick: { month: null, sel: new Set(), part: "Full", kind: "Holiday", note: "" },
-  cancelSel: new Set(), cancelReason: "", msg: null, busy: false
+  cancelSel: new Set(), cancelReason: "", workedDate: "", msg: null, busy: false
 };
 
 // ======================================================================
@@ -196,7 +196,13 @@ const Demo = {
   async addCompany(date, kind, name) { S.company.push({ id: "c" + Math.random(), date, kind, name }); },
   async removeCompany(id) { S.company = S.company.filter(c => c.id !== id); },
   async setAllowance(email, n) { S.staff.find(p => p.email === email).allowance = n; },
-  async addExtra(email, year, n, reason) { S.extra.push({ id: "e" + Math.random(), email, year, days: n, reason, name: S.staff.find(p => p.email === email).name }); }
+  async addExtra(email, year, n, reason) { S.extra.push({ id: "e" + Math.random(), email, year, days: n, reason, name: S.staff.find(p => p.email === email).name }); },
+  async setOffDays(email, v) { S.staff.find(p => p.email === email).offDays = v; },
+  async logWorked(date) {
+    S.extra.push({ id: "e" + Math.random(), email: S.me.email, name: S.me.name, year: Math.max(CFG.firstYear, yearOf(date)), days: 1,
+      reason: "Worked " + ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][parse(date).getDay()] + " " + date });
+    return "Added. You have an extra day to book.";
+  }
 };
 
 const Live = {
@@ -267,7 +273,14 @@ const Live = {
   setAllowance(email, n) { const p = S.staff.find(x => x.email === email);
     return this.g("PATCH", "/sites/" + this.siteId + "/lists/" + this.listIds.staff + "/items/" + p.id + "/fields", { Allowance: n }); },
   addExtra(email, year, n, reason) { const p = S.staff.find(x => x.email === email);
-    return this.add("extra", { Title: p.name, Email: email, Yr: year, Days: n, Reason: reason }); }
+    return this.add("extra", { Title: p.name, Email: email, Yr: year, Days: n, Reason: reason }); },
+  setOffDays(email, v) { const p = S.staff.find(x => x.email === email);
+    return this.g("PATCH", "/sites/" + this.siteId + "/lists/" + this.listIds.staff + "/items/" + p.id + "/fields", { OffDays: v }); },
+  // staff can't write Extra Days themselves: flow A checks the day and adds the row
+  async logWorked(date) {
+    await this.add("requests", { Title: S.me.name, Email: S.me.email, Action: "Worked", DayDates: date, Amount: 1, Status: "New" });
+    return "Sent. The extra day will show here in a minute or two.";
+  }
 };
 const DB = DEMO ? Demo : Live;
 
@@ -276,10 +289,22 @@ const DB = DEMO ? Demo : Live;
 // ======================================================================
 const companyOn = date => S.company.find(c => c.date === date);
 const offWeekdays = p => (p.offDays || "").split(/[ ,]+/).filter(Boolean).map(x => DOW.indexOf(x.slice(0, 3)));
+// "Fri swap": the day off is a swap for working Saturday, so that person is full time -
+// company days on it still count and Saturday is a working day. Plain "Wed" = part time.
+const isSwap = p => /swap/i.test(p.offDays || "");
 function workday(p, date) {
   const w = parse(date).getDay();
   return w >= 1 && w <= 5 && !companyOn(date) && !offWeekdays(p).includes(w);
 }
+// a day that earns an extra holiday day if worked: their normal day off, Sunday, or Saturday
+// (not Saturday for a swap person). Only admins and no-approval staff can log one.
+const canLogWorked = p => p.admin || !p.needsApproval;
+function earnsDay(p, date) {
+  const w = parse(date).getDay();
+  return offWeekdays(p).includes(w) || w === 0 || (w === 6 && !isSwap(p));
+}
+const workedClaimed = (p, date) => S.extra.some(e => e.email === p.email && (e.reason || "").includes(date))
+  || S.requests.some(q => q.status === "New" && q.action === "Worked" && q.email === p.email && q.dates.includes(date));
 // days asked for but not yet turned into day rows by the flow (live only)
 function queued(email, year) {
   return S.requests.filter(q => q.status === "New" && q.action === "Book" && q.email === email)
@@ -290,7 +315,10 @@ function cancelling(id) { return S.requests.some(q => q.status === "New" && q.ac
 function balance(p, year) {
   const extra = S.extra.filter(e => e.email === p.email && e.year === year).reduce((a, e) => a + e.days, 0);
   const allowance = p.allowance + extra;
-  const company = S.company.filter(c => yearOf(c.date) === year && [1,2,3,4,5].includes(parse(c.date).getDay())).length;
+  // a company day on a part-timer's normal day off isn't a day they'd have worked, so it costs nothing
+  const offs = isSwap(p) ? [] : offWeekdays(p);
+  const company = S.company.filter(c => { const w = parse(c.date).getDay();
+    return yearOf(c.date) === year && w >= 1 && w <= 5 && !offs.includes(w); }).length;
   const mine = S.days.filter(d => d.email === p.email && yearOf(d.date) === year && d.kind === "Holiday" && ACTIVE.has(d.status) && !cancelling(d.id))
     .concat(queued(p.email, year).filter(d => d.kind === "Holiday"));
   const taken = mine.filter(d => d.status === "Booked" && d.date < TODAY).reduce((a, d) => a + d.amount, 0);
@@ -348,8 +376,9 @@ function dayRow(d, opts) {
     <span class="what">${kind}${part}${sub ? `<small>${sub}</small>` : ""}</span>${chip}</div>`;
 }
 function companyRow(c) {
+  const free = !isSwap(S.me) && offWeekdays(S.me).includes(parse(c.date).getDay());
   return `<div class="row"><span class="dt">${dayName(c.date)} ${parse(c.date).getDate()}<small>${MON[parse(c.date).getMonth()]}</small></span>
-    <span class="what">${esc(c.name)}</span><span class="chip c-fixed">Everyone</span></div>`;
+    <span class="what">${esc(c.name)}${free ? "<small>Your normal day off, so it doesn't use your holiday</small>" : ""}</span><span class="chip c-fixed">Everyone</span></div>`;
 }
 
 function viewHome() {
@@ -362,6 +391,13 @@ function viewHome() {
     .sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : 0);
   const up = items.filter(i => i.date >= TODAY), past = items.filter(i => i.date < TODAY).reverse();
   const admin = S.me.admin ? `<button class="btn full" data-go="admin">Year set-up and allowances</button>` : "";
+  const worked = canLogWorked(S.me) ? `<button class="btn full" data-go="worked">I worked my day off</button>` : "";
+  const ex = S.extra.filter(e => e.email === S.me.email && e.year === y);
+  const sending = S.requests.filter(q => q.status === "New" && q.action === "Worked" && q.email === S.me.email);
+  const exRows = ex.map(e => `<div class="row"><span class="dt">+${half(e.days)}<small>day${e.days === 1 ? "" : "s"}</small></span>
+      <span class="what">${esc(e.reason)}</span><span class="chip c-ok">Added</span></div>`)
+    .concat(sending.map(q => `<div class="row"><span class="dt">+1<small>day</small></span>
+      <span class="what">Worked ${esc(nice(q.dates[0] || TODAY))}</span><span class="chip c-pend">Adding</span></div>`)).join("");
   const leftTxt = b.left < 0 ? "days over" : "days left to book";
   shell("My holidays", `${msg()}${yearTabs()}
     <div class="big"><span class="n">${half(Math.abs(b.left))}</span><span class="l">${leftTxt} in ${y}</span></div>
@@ -375,9 +411,10 @@ function viewHome() {
       <span><i class="dot" style="background:var(--pending)"></i>Waiting for Graham</span><span>${half(b.pending)}</span>
       <span><i class="dot" style="border:1px solid var(--line)"></i>Left to book</span><span>${half(b.left)}</span>
       <span class="tot">Allowance${b.extra ? " (incl. " + half(b.extra) + " extra)" : ""}</span><span class="tot">${half(b.allowance)}</span></div>
-    <div class="btns"><button class="btn p" data-go="book">Book days off</button><button class="btn d" data-go="cancel">Cancel days</button>${admin}</div>
+    <div class="btns"><button class="btn p" data-go="book">Book days off</button><button class="btn d" data-go="cancel">Cancel days</button>${worked}${admin}</div>
     <div class="sec">Coming up</div>
     <div class="list">${up.length ? up.map(i => i.html).join("") : `<div class="empty">Nothing booked yet for ${y}.</div>`}</div>
+    ${exRows ? `<div class="sec">Extra days in ${y}</div><div class="list">${exRows}</div>` : ""}
     ${past.length ? `<div class="sec">Earlier in ${y}</div><div class="list">${past.map(i => i.html).join("")}</div>` : ""}
     ${DEMO ? "" : `<button class="link small" data-act="signout" style="align-self:center">Sign out</button>`}`);
 }
@@ -461,6 +498,25 @@ function viewCancel() {
   const w = document.getElementById("why"); if (w) w.oninput = () => { S.cancelReason = w.value; };
 }
 
+function viewWorked() {
+  const d = S.workedDate || "", p = S.me;
+  const offs = offWeekdays(p).filter(w => w > 0).map(w => ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"][w] + "s");
+  const counts = offs.concat(isSwap(p) ? [] : ["Saturdays"]).filter((x, i, a) => a.indexOf(x) === i).concat(["Sundays"]).join(", ").replace(/, ([^,]*)$/, " or $1");
+  let check = "", ok = false;
+  if (d) {
+    if (d > TODAY) check = `<div class="note bad">That's in the future. Log it once you've worked it.</div>`;
+    else if (!earnsDay(p, d)) check = `<div class="note bad">${esc(nice(d))} is a normal working day for you, so it doesn't earn an extra day.</div>`;
+    else if (workedClaimed(p, d)) check = `<div class="note bad">You've already logged ${esc(nice(d))}.</div>`;
+    else { ok = true; check = `<div class="note">Worked <b>${esc(nice(d))}</b>. This adds <b>1 day</b> to your ${Math.max(CFG.firstYear, yearOf(d))} holiday, to book whenever you like.</div>`; }
+  }
+  shell("Day worked", `<p style="margin:0">Worked on a day you'd normally be off? Log it and you get an extra day's holiday. For you that's <b>${esc(counts)}</b>.</p>
+    <div class="field"><label for="wdate">Day you worked</label><input type="date" id="wdate" max="${TODAY}" value="${esc(d)}"></div>
+    ${check}
+    <button class="btn p full" data-act="logworked" ${!ok || S.busy ? "disabled" : ""}>${S.busy ? "Sending..." : "Add my extra day"}</button>
+    <p class="small" style="margin:0;text-align:center">${p.admin ? "It's kept on record in the Extra Days list." : "Graham gets an email so he knows."}</p>`, true);
+  const w = document.getElementById("wdate"); if (w) w.onchange = () => { S.workedDate = w.value; render(); };
+}
+
 function viewAdmin() {
   const y = S.year;
   const comp = S.company.filter(c => yearOf(c.date) === y).sort((a, b) => a.date < b.date ? -1 : 1);
@@ -470,6 +526,7 @@ function viewAdmin() {
       <span class="what">${esc(c.name)}<small>${esc(c.kind)}</small></span><button class="link small" data-rmco="${c.id}">Remove</button></div>`).join("");
   const staffRows = S.staff.map(p => { const b = balance(p, y);
     return `<tr><td>${esc(p.name)}</td><td class="n"><input type="number" step="0.5" min="0" value="${p.allowance}" data-allow="${esc(p.email)}" aria-label="${esc(p.name)} allowance"></td>
+      <td><input type="text" style="width:5.5em" value="${esc(p.offDays)}" data-off="${esc(p.email)}" placeholder="none" aria-label="${esc(p.name)} normal day off"></td>
       <td class="n">${b.extra ? "+" + half(b.extra) : ""}</td><td class="n">${half(b.taken + b.booked)}</td><td class="n">${half(b.pending)}</td><td class="n"><b>${half(b.left)}</b></td></tr>`; }).join("");
   shell("Year set-up", `${msg()}${yearTabs()}
     <div class="note"><b>${bank}</b> bank holidays + <b>${shut}</b> shutdown days in ${y} on weekdays. The lads have <b>${28 - wk.length}</b> of 28 to book themselves, and 35-day staff have <b>${35 - wk.length}</b>.</div>
@@ -482,8 +539,10 @@ function viewAdmin() {
       <button class="btn p" data-act="addco">Add day</button>
       <span class="small">December shutdown days count in that year. Days after 1 January count in the next year, so add them under that year.</span></div>
     <div class="sec">Allowances for ${y}</div>
-    <div class="scroll"><table class="tbl"><thead><tr><th>Name</th><th class="n">Yearly</th><th class="n">Extra</th><th class="n">Used</th><th class="n">Waiting</th><th class="n">Left</th></tr></thead><tbody>${staffRows}</tbody></table></div>
-    <span class="small">Change a yearly figure and it saves when you leave the box. It applies to every year.</span>
+    <div class="scroll"><table class="tbl"><thead><tr><th>Name</th><th class="n">Yearly</th><th>Day off</th><th class="n">Extra</th><th class="n">Used</th><th class="n">Waiting</th><th class="n">Left</th></tr></thead><tbody>${staffRows}</tbody></table></div>
+    <span class="small">Change a yearly figure and it saves when you leave the box. It applies to every year.
+      Day off: a part-timer's normal day off, e.g. <b>Wed</b>. Bank holidays and shutdown days on it don't come off their allowance.
+      Add <b>swap</b> (e.g. <b>Fri swap</b>) when the day off is swapped for working Saturday: then those days still count.</span>
     <div class="field"><span class="lab">Give someone extra days in ${y} only</span>
       <div class="inline"><select id="exwho" aria-label="Person">${S.staff.map(p => `<option value="${esc(p.email)}">${esc(p.name)}</option>`).join("")}</select>
         <input type="number" id="exdays" step="0.5" value="1" aria-label="Days"></div>
@@ -506,7 +565,8 @@ function viewError(e) {
 function render() {
   if (!S.me) return;
   if (!years().includes(S.year)) S.year = years()[0];
-  ({ home: viewHome, book: viewBook, cancel: viewCancel, admin: S.me.admin ? viewAdmin : viewHome })[S.view]();
+  ({ home: viewHome, book: viewBook, cancel: viewCancel, worked: canLogWorked(S.me) ? viewWorked : viewHome,
+     admin: S.me.admin ? viewAdmin : viewHome })[S.view]();
 }
 
 // ======================================================================
@@ -545,6 +605,11 @@ $app.addEventListener("click", async ev => {
       const ids = [...S.cancelSel];
       if (await act(() => DB.cancel(ids, S.cancelReason.trim()))) { S.cancelSel.clear(); S.cancelReason = ""; S.view = "home"; render(); }
       break; }
+    case "logworked": {
+      const d = S.workedDate;
+      if (!d || d > TODAY || !earnsDay(S.me, d) || workedClaimed(S.me, d)) return;
+      if (await act(() => DB.logWorked(d))) { S.workedDate = ""; S.view = "home"; S.year = Math.max(CFG.firstYear, yearOf(d)); render(); }
+      break; }
     case "addco": {
       const d = document.getElementById("codate").value, k = document.getElementById("cokind").value;
       if (!d) return;
@@ -571,6 +636,7 @@ $app.addEventListener("change", async ev => {
   const t = ev.target;
   if (t.dataset && t.dataset.allow) { const n = Number(t.value); if (isNaN(n) || n < 0) return;
     await act(() => DB.setAllowance(t.dataset.allow, n), "Allowance saved."); }
+  if (t.dataset && t.dataset.off) await act(() => DB.setOffDays(t.dataset.off, t.value.trim()), "Day off saved.");
 });
 
 // ======================================================================
